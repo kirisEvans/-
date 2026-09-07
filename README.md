@@ -9,6 +9,6 @@
 
 背景可以换成自己喜欢的也可以默认：
 
-![Uploading e5cf105d-9045-4dc7-ac96-ba66816aee6c.png…]()
+<img width="1910" height="915" alt="8671749d0430fce30bc51d0fc979f4cc" src="https://github.com/user-attachments/assets/fe4bc59c-35c4-47b9-98ad-3ccdebac40d6" />
 
 目前非常简陋，请多多见谅！！！！！
