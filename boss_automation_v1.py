@@ -54,26 +54,65 @@ DAMAGE_RATIO_REGION = (580, 115, 140, 70)
 IMAGE_CHECK_INTERVAL = 0.08
 IMAGE_CONFIDENCE = 0.6
 STATUS_PRINT_INTERVAL = 1.0
+PANEL_HEARTBEAT_TIMEOUT_SECONDS = 10.0
 
 # 图片必须连续消失这么久，才会松开鼠标。
-# 若仍会误松开，可改为 0.8 或 1.0。
-IMAGE_LOST_CONFIRM_SECONDS = 1.0
+IMAGE_LOST_CONFIRM_SECONDS = 0.5
 
 # 所有鼠标操作共用一把锁，防止 click() 的 mouseUp() 冲掉长按。
 mouse_lock = threading.Lock()
 config_lock = threading.Lock()
 config_ready = threading.Event()
+panel_connected = threading.Event()
+panel_closed = threading.Event()
+panel_heartbeat_lock = threading.Lock()
+last_panel_heartbeat = 0.0
 active_config = {
     "stars": SELECTED_STAR,
     "card": SELECTED_CARD,
     "quantity": REPEAT_COUNT,
+    "taskbar_index": int(TASKBAR_INDEX),
 }
+
+
+class PanelClosed(Exception):
+    """控制面板已关闭或不再响应。"""
 
 
 def get_config() -> dict:
     """读取网页提交的当前设置。"""
     with config_lock:
         return active_config.copy()
+
+
+def record_panel_heartbeat() -> None:
+    """记录控制面板仍处于打开状态。"""
+    global last_panel_heartbeat
+    with panel_heartbeat_lock:
+        last_panel_heartbeat = time.monotonic()
+    panel_connected.set()
+
+
+def is_panel_closed() -> bool:
+    """检查网页是否明确关闭，或已超过心跳超时时间。"""
+    if panel_closed.is_set():
+        return True
+    if not panel_connected.is_set():
+        return False
+    with panel_heartbeat_lock:
+        heartbeat_age = time.monotonic() - last_panel_heartbeat
+    if heartbeat_age > PANEL_HEARTBEAT_TIMEOUT_SECONDS:
+        panel_closed.set()
+        return True
+    return False
+
+
+def wait_for_next_config() -> bool:
+    """等待网页提交下一组设置；网页关闭时返回 False。"""
+    while not config_ready.wait(0.1):
+        if is_panel_closed():
+            return False
+    return not is_panel_closed()
 
 
 class ControlPanelHandler(BaseHTTPRequestHandler):
@@ -106,6 +145,15 @@ class ControlPanelHandler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "接口不存在"})
 
     def do_POST(self) -> None:
+        if self.path == "/api/heartbeat":
+            record_panel_heartbeat()
+            self.send_json(200, {"ok": True})
+            return
+        if self.path == "/api/stop":
+            panel_closed.set()
+            config_ready.set()
+            self.send_json(200, {"ok": True})
+            return
         if self.path != "/api/config":
             self.send_json(404, {"error": "接口不存在"})
             return
@@ -113,16 +161,31 @@ class ControlPanelHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             data = json.loads(self.rfile.read(length).decode("utf-8"))
             stars, card, quantity = int(data["stars"]), int(data["card"]), int(data["quantity"])
-            if stars not in STAR_POSITIONS or card not in CARD_POSITIONS or not 1 <= quantity <= 999:
+            taskbar_index = int(data["taskbarIndex"])
+            if (
+                stars not in STAR_POSITIONS
+                or card not in CARD_POSITIONS
+                or not 1 <= quantity <= 999
+                or not 1 <= taskbar_index <= 9
+            ):
                 raise ValueError
         except (ValueError, KeyError, TypeError, json.JSONDecodeError):
-            self.send_json(400, {"error": "设置无效：星级为 1～6，卡片为 1～3，数量为 1～999。"})
+            self.send_json(400, {"error": "设置无效：星级为 1～6，卡片为 1～3，数量为 1～999，任务栏位置为 1～9。"})
             return
 
         with config_lock:
-            active_config.update(stars=stars, card=card, quantity=quantity)
+            active_config.update(
+                stars=stars,
+                card=card,
+                quantity=quantity,
+                taskbar_index=taskbar_index,
+            )
+        record_panel_heartbeat()
         config_ready.set()
-        print(f"已收到控制面板设置：{stars} 星，第 {card} 张，共 {quantity} 次。")
+        print(
+            f"已收到控制面板设置：{stars} 星，第 {card} 张，共 {quantity} 次，"
+            f"任务栏第 {taskbar_index} 个程序。"
+        )
         self.send_json(200, {"ok": True, "message": "设置已发送，自动化即将启动。"})
 
 
@@ -163,6 +226,8 @@ def wait_or_stop(seconds: float, pause_event: threading.Event) -> None:
     last_time = time.monotonic()
 
     while remaining > 0:
+        if is_panel_closed():
+            raise PanelClosed
         if keyboard.is_pressed("space"):
             raise KeyboardInterrupt
 
@@ -267,12 +332,12 @@ def select_and_summon_boss(
         print(f"首次选择 {stars} 星……")
         safe_click(*STAR_POSITIONS[stars], pause_event)
 
-        wait_or_stop(0.5, pause_event)
+        wait_or_stop(0.3, pause_event)
 
     card_x, card_y = CARD_POSITIONS[card]
     safe_click(card_x, card_y, pause_event)
 
-    wait_or_stop(random.uniform(0.5, 1.0), pause_event)
+    wait_or_stop(random.uniform(0.3, 0.5), pause_event)
 
     print("正在点击召唤 Boss……")
     safe_click(*SUMMON_BOSS_POSITION, pause_event)
@@ -298,12 +363,17 @@ def run(config: dict) -> None:
     monitor_thread.start()
 
     try:
-        stars, card, repeat_count = config["stars"], config["card"], config["quantity"]
+        stars, card, repeat_count, taskbar_index = (
+            config["stars"],
+            config["card"],
+            config["quantity"],
+            config["taskbar_index"],
+        )
         print("正在运行新版防误松开脚本。")
         print("将在 3 秒后开始。按空格键或将鼠标移到屏幕左上角可紧急停止。")
         wait_or_stop(3, pause_event)
 
-        pyautogui.hotkey("win", TASKBAR_INDEX)
+        pyautogui.hotkey("win", str(taskbar_index))
         print(f"等待目标程序加载完成（{PROGRAM_OPEN_DELAY_SECONDS} 秒）……")
         wait_or_stop(PROGRAM_OPEN_DELAY_SECONDS, pause_event)
 
@@ -357,9 +427,18 @@ if __name__ == "__main__":
         server = start_control_server()
         print("控制面板已就绪：请打开 card_control_panel.html，设置后点击“发送设置并启动”。")
         open_control_panel()
-        print("正在等待网页设置……")
-        config_ready.wait()
-        run(get_config())
+        while True:
+            print("正在等待网页设置……")
+            if not wait_for_next_config():
+                print("控制面板已关闭，自动化已停止。")
+                break
+            config = get_config()
+            config_ready.clear()
+            try:
+                run(config)
+            except PanelClosed:
+                print("控制面板已关闭，自动化已停止。")
+                break
     except pyautogui.FailSafeException:
         print("检测到鼠标位于屏幕左上角，已紧急停止。")
     except KeyboardInterrupt:

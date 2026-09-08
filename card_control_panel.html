@@ -27,6 +27,7 @@
     .stepper button { border:0; width:48px; height:100%; color:#52607a; background:transparent; cursor:pointer; font-size:22px; transition:.15s; } .stepper button:hover { color:var(--blue); background:#f1f4ff; }
     .stepper output { width:67px; text-align:center; font-size:17px; font-weight:800; }
     .quantity { display:flex; gap:12px; align-items:center; } .quantity input { width:100%; max-width:210px; height:48px; padding:0 15px; border:1.5px solid var(--line); border-radius:12px; outline:0; color:var(--ink); font:700 16px inherit; transition:.15s; } .quantity input:focus { border-color:var(--blue); box-shadow:0 0 0 4px #dce3ff; }
+    .taskbar-index { display:flex; gap:12px; align-items:center; } .taskbar-index input { width:100%; max-width:210px; height:48px; padding:0 15px; border:1.5px solid var(--line); border-radius:12px; outline:0; color:var(--ink); font:700 16px inherit; transition:.15s; } .taskbar-index input:focus { border-color:var(--blue); box-shadow:0 0 0 4px #dce3ff; }
     .unit { color:var(--muted); font-size:14px; }
     .wallpaper-control { display:flex; align-items:center; gap:10px; flex-wrap:wrap; } .upload { display:inline-flex; align-items:center; justify-content:center; height:42px; padding:0 15px; border:1.5px solid #ccd6f3; border-radius:10px; color:#4058c9; background:#f5f7ff; font-size:13px; font-weight:700; cursor:pointer; transition:.15s; } .upload:hover { background:#e9edff; border-color:#9facf0; } .upload input { display:none; } .reset-wallpaper { height:42px; padding:0 11px; border:0; color:var(--muted); background:transparent; font:13px inherit; cursor:pointer; } .reset-wallpaper:hover { color:var(--blue); } .file-name { max-width:220px; overflow:hidden; color:var(--muted); font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
     .add { width:100%; height:51px; border:0; border-radius:13px; color:#fff; cursor:pointer; font:700 15px inherit; background:linear-gradient(135deg,var(--blue),#5979ff); box-shadow:0 10px 18px #c7d2ff; transition:.2s; } .add:hover { transform:translateY(-2px); box-shadow:0 13px 22px #bdcaff; } .add:active { transform:translateY(0); }
@@ -43,6 +44,7 @@
         <div class="field"><div class="field-label">卡片星级 <span class="hint">选择 1 至 6 星</span></div><div class="stars" id="stars"></div></div>
         <div class="field"><div class="field-label">卡片序号 <span class="hint">第 1 至 3 张卡片</span></div><div class="stepper"><button type="button" data-action="minus" aria-label="减少序号">−</button><output id="cardIndex">1</output><button type="button" data-action="plus" aria-label="增加序号">+</button></div></div>
         <div class="field"><div class="field-label">投放数量 <span class="hint">本次放入的张数</span></div><div class="quantity"><input id="quantity" type="number" min="1" max="999" value="1" inputmode="numeric" aria-label="投放数量"><span class="unit">张</span></div></div>
+        <div class="field"><div class="field-label">目标程序任务栏位置 <span class="hint">从左到右第 1 至 9 个图标</span></div><div class="taskbar-index"><input id="taskbarIndex" type="number" min="1" max="9" value="4" inputmode="numeric" aria-label="目标程序任务栏位置"><span class="unit">第几个</span></div></div>
         <div class="field"><div class="field-label">背景壁纸 <span class="hint">支持 JPG、PNG、WebP</span></div><div class="wallpaper-control"><label class="upload">选择本地图片<input id="wallpaperInput" type="file" accept="image/png,image/jpeg,image/webp"></label><button class="reset-wallpaper" type="button" id="resetWallpaper">恢复默认</button><span class="file-name" id="fileName">默认卡牌壁纸</span></div></div>
         <button class="add" type="submit">发送设置并启动</button>
         <div class="notice" id="notice" role="status"></div>
@@ -50,17 +52,23 @@
     </main>
   </section>
   <script>
-    const state = { stars: 1, index: 1, quantity: 1 };
-    const stars = document.querySelector('#stars'), qty = document.querySelector('#quantity');
+    const state = { stars: 1, index: 1, quantity: 1, taskbarIndex: 4 };
+    const apiUrl = 'http://127.0.0.1:8765/api';
+    const stars = document.querySelector('#stars'), qty = document.querySelector('#quantity'), taskbarIndex = document.querySelector('#taskbarIndex');
     stars.innerHTML = [1,2,3,4,5,6].map(n => `<label class="star-option"><input type="radio" name="rating" value="${n}" ${n===1?'checked':''}><span>${'★'.repeat(n)}</span></label>`).join('');
     const el = id => document.getElementById(id);
-    function render() { const q = Math.max(1, Math.min(999, Number(qty.value) || 1)); state.quantity=q; qty.value=q; el('cardIndex').textContent=state.index; }
+    function render() { const q = Math.max(1, Math.min(999, Number(qty.value) || 1)); const t = Math.max(1, Math.min(9, Number(taskbarIndex.value) || 1)); state.quantity=q; state.taskbarIndex=t; qty.value=q; taskbarIndex.value=t; el('cardIndex').textContent=state.index; }
     stars.addEventListener('change', e=>{ state.stars=Number(e.target.value); render(); });
     document.querySelector('.stepper').addEventListener('click', e=>{ const a=e.target.dataset.action; if(!a)return; state.index=Math.max(1,Math.min(3,state.index+(a==='plus'?1:-1))); render(); });
     qty.addEventListener('input', render);
+    taskbarIndex.addEventListener('input', render);
+    const sendHeartbeat = () => fetch(`${apiUrl}/heartbeat`, {method:'POST', keepalive:true}).catch(() => {});
+    sendHeartbeat();
+    window.setInterval(sendHeartbeat, 3000);
+    window.addEventListener('pagehide', () => navigator.sendBeacon(`${apiUrl}/stop`));
     el('wallpaperInput').addEventListener('change', e=>{ const file=e.target.files[0]; if(!file)return; const reader=new FileReader(); reader.onload=()=>{ document.body.style.setProperty('--wallpaper', `url("${reader.result}")`); el('fileName').textContent=file.name; }; reader.readAsDataURL(file); });
     el('resetWallpaper').addEventListener('click', ()=>{ document.body.style.removeProperty('--wallpaper'); el('wallpaperInput').value=''; el('fileName').textContent='默认卡牌壁纸'; });
-    el('cardForm').addEventListener('submit', async e=>{ e.preventDefault(); const notice=el('notice'), button=e.submitter, status=el('connectionStatus'); button.disabled=true; button.textContent='正在发送…'; try { const response=await fetch('http://127.0.0.1:8765/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stars:state.stars,card:state.index,quantity:state.quantity})}); const result=await response.json(); if(!response.ok)throw new Error(result.error||'发送失败'); notice.textContent=result.message; notice.className='notice show'; status.textContent='● 已发送至程序'; } catch(error) { notice.textContent=`无法连接程序：${error.message}。请先运行 boss_automation_v2.py。`; notice.className='notice show error'; status.textContent='● 未连接'; } finally { button.disabled=false; button.textContent='发送设置并启动'; } });
+    el('cardForm').addEventListener('submit', async e=>{ e.preventDefault(); const notice=el('notice'), button=e.submitter, status=el('connectionStatus'); button.disabled=true; button.textContent='正在发送…'; try { const response=await fetch(`${apiUrl}/config`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stars:state.stars,card:state.index,quantity:state.quantity,taskbarIndex:state.taskbarIndex})}); const result=await response.json(); if(!response.ok)throw new Error(result.error||'发送失败'); notice.textContent=result.message; notice.className='notice show'; status.textContent='● 已发送至程序'; } catch(error) { notice.textContent=`无法连接程序：${error.message}。请先运行 boss_automation_v1.py。`; notice.className='notice show error'; status.textContent='● 未连接'; } finally { button.disabled=false; button.textContent='发送设置并启动'; } });
     render();
   </script>
 </body>
