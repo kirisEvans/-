@@ -1,14 +1,72 @@
-# 试炼岛自动插卡放卡打怪
-穿越火线的应用端必须放在任务栏的第四个（我设置的，懒得改了hhh）
+# 试炼岛自动插卡、放卡、打怪
 
-<img width="475" height="215" alt="d741560da7187dacdef548ce3c085d6c" src="https://github.com/user-attachments/assets/7d444f23-5b63-45ad-a39d-b28b88658164" />
+用于《穿越火线》试炼岛的自动化辅助工具。
 
-屏幕的要求：
+> 目前功能和界面仍比较简陋，欢迎提出建议与反馈！
 
-<img width="1118" height="465" alt="7b70a74b-5e26-47ac-abc0-45d5aa14fe24" src="https://github.com/user-attachments/assets/d4b6a8f0-f607-48d5-b000-319d2aa92ef8" />
+## 功能
 
-背景可以换成自己喜欢的也可以默认：
+- 自动插卡
+- 自动放卡
+- 自动打怪
+- 支持自定义背景图片
+- 可使用默认背景
 
-<img width="1910" height="915" alt="8671749d0430fce30bc51d0fc979f4cc" src="https://github.com/user-attachments/assets/fe4bc59c-35c4-47b9-98ad-3ccdebac40d6" />
+## 使用前提
 
-目前非常简陋，请多多见谅！！！！！
+请确保《穿越火线》客户端在 Windows 任务栏中的位置，与工具内配置的位置一致。
+
+例如：下图中客户端位于任务栏第 4 个位置，则工具内也应设置为 `4`。
+
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/860747e4-00a8-4e95-9be9-2adadf46ea2e"
+    width="700"
+    alt="工具内任务栏位置设置示例"
+  >
+</p>
+
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/7d444f23-5b63-45ad-a39d-b28b88658164"
+    width="475"
+    alt="Windows 任务栏位置示例"
+  >
+</p>
+
+## 屏幕要求
+
+使用前请确认游戏画面与分辨率符合以下要求，否则可能影响识别与操作效果。
+
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/789d326c-199d-488e-82e1-f4bcccf08053"
+    width="700"
+    alt="屏幕设置要求"
+  >
+</p>
+
+## 界面预览
+
+背景可替换为自己喜欢的图片；不设置时将使用默认背景。
+
+<!-- 在这里补充工具主界面截图 -->
+
+## 使用说明
+
+1. 打开《穿越火线》并进入试炼岛。
+2. 确认游戏客户端在任务栏的位置。
+3. 在工具中填写对应的任务栏位置。
+4. 按照“屏幕要求”调整游戏窗口与分辨率。
+5. 选择需要开启的功能并启动。
+
+## 注意事项
+
+- 请确保游戏窗口未被其他窗口遮挡。
+- 任务栏位置设置错误可能导致无法正确切换至游戏。
+- 屏幕缩放、分辨率或游戏界面变化，可能影响识别效果。
+- 请自行承担使用自动化工具可能带来的风险。
+
+## 免责声明
+
+本项目仅供学习与交流使用，请遵守游戏用户协议及相关规则。
