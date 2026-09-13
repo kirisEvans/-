@@ -16,6 +16,7 @@
     .logo { width:42px; height:42px; border-radius:13px; display:grid; place-items:center; color:white; font-size:21px; background:linear-gradient(135deg,#6382ff,#4159dc); box-shadow:0 8px 16px #cad4ff; }
     h1 { margin:0; font-size:21px; letter-spacing:.02em; } .subtitle { margin:5px 0 0; color:var(--muted); font-size:13px; }
     .status { border-radius:99px; padding:8px 12px; font-size:12px; font-weight:700; color:#23845a; background:#e8f8f0; }
+    .header-actions { display:flex; gap:9px; align-items:center; } .stop { height:34px; padding:0 12px; border:1px solid #f1c6c6; border-radius:9px; color:#bd3b3b; background:#fff5f5; font:700 12px inherit; cursor:pointer; transition:.15s; } .stop:hover { border-color:#df8e8e; background:#ffebeb; }
     main { display:block; }
     .tabs { display:flex; gap:6px; padding:16px 34px 0; border-bottom:1px solid var(--line); }
     .tab { position:relative; padding:10px 14px; border:0; color:var(--muted); background:transparent; font:700 14px inherit; cursor:pointer; }
@@ -54,7 +55,7 @@
 </head>
 <body>
   <section class="panel" aria-label="卡片投放控制台">
-    <header><div class="title"><div class="logo">✦</div><div><h1>卡片投放控制台</h1><p class="subtitle">设置本次需要加入的卡片</p></div></div><span class="status" id="connectionStatus">● 等待程序连接</span></header>
+    <header><div class="title"><div class="logo">✦</div><div><h1>卡片投放控制台</h1><p class="subtitle">设置本次需要加入的卡片</p></div></div><div class="header-actions"><span class="status" id="connectionStatus">● 等待程序连接</span><button class="stop" type="button" id="stopTask">停止当前任务</button></div></header>
     <main>
       <nav class="tabs" aria-label="功能页面">
         <button class="tab active" type="button" data-page="cardPage">卡片投放</button>
@@ -68,7 +69,7 @@
         <div class="field"><div class="field-label">目标程序任务栏位置 <span class="hint">从左到右第 1 至 9 个图标</span></div><div class="taskbar-index"><input id="taskbarIndex" type="number" min="1" max="9" value="4" inputmode="numeric" aria-label="目标程序任务栏位置"><span class="unit">第几个</span></div></div>
         <div class="field"><div class="field-label">背景壁纸 <span class="hint">支持 JPG、PNG、WebP</span></div><div class="wallpaper-control"><label class="upload">选择本地图片<input id="wallpaperInput" type="file" accept="image/png,image/jpeg,image/webp"></label><button class="reset-wallpaper" type="button" id="resetWallpaper">恢复默认</button><span class="file-name" id="fileName">默认卡牌壁纸</span></div></div>
         <button class="add" type="submit">发送设置并启动</button>
-        <p class="shortcut-hint">运行期间按空格键终止当前任务，可重新选择功能并启动。</p>
+        <p class="shortcut-hint">点击右上角“停止当前任务”可终止；修改设置后再次启动会自动重置任务。</p>
         <div class="notice" id="notice" role="status"></div>
         </form>
       </section>
@@ -82,9 +83,9 @@
           <div class="attack-features">
             <div class="attack-feature"><b>按住左键</b><span>保持持续攻击</span></div>
             <div class="attack-feature"><b>10 秒 / F</b><span>定时触发技能键</span></div>
-            <div class="attack-feature"><b>空格终止</b><span>返回控制台重选任务</span></div>
+            <div class="attack-feature"><b>页面终止</b><span>点击右上角停止按钮</span></div>
           </div>
-          <div class="attack-action"><p class="shortcut-hint">按空格键会终止当前任务并松开鼠标左键。</p><button class="add" type="submit">启动自动攻击</button></div>
+          <div class="attack-action"><p class="shortcut-hint">点击右上角停止按钮会终止当前任务并松开鼠标左键。</p><button class="add" type="submit">启动自动攻击</button></div>
           <div class="notice" id="attackNotice" role="status"></div>
         </form>
       </section>
@@ -106,6 +107,7 @@
     sendHeartbeat();
     window.setInterval(sendHeartbeat, 3000);
     window.addEventListener('pagehide', () => navigator.sendBeacon(`${apiUrl}/stop`));
+    el('stopTask').addEventListener('click', async e=>{ const button=e.currentTarget; button.disabled=true; try { const response=await fetch(`${apiUrl}/stop-current`,{method:'POST'}); const result=await response.json(); if(!response.ok)throw new Error(result.error||'停止失败'); el('connectionStatus').textContent=`● ${result.message}`; } catch(error) { el('connectionStatus').textContent=`● 无法停止：${error.message}`; } finally { button.disabled=false; } });
     document.querySelector('.tabs').addEventListener('click', e=>{ const tab=e.target.closest('.tab'); if(!tab)return; document.querySelectorAll('.tab').forEach(item=>item.classList.toggle('active',item===tab)); document.querySelectorAll('.page').forEach(page=>page.hidden=page.id!==tab.dataset.page); });
     el('wallpaperInput').addEventListener('change', e=>{ const file=e.target.files[0]; if(!file)return; const reader=new FileReader(); reader.onload=()=>{ document.body.style.setProperty('--wallpaper', `url("${reader.result}")`); el('fileName').textContent=file.name; }; reader.readAsDataURL(file); });
     el('resetWallpaper').addEventListener('click', ()=>{ document.body.style.removeProperty('--wallpaper'); el('wallpaperInput').value=''; el('fileName').textContent='默认卡牌壁纸'; });

@@ -9,7 +9,6 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import keyboard
 import pyautogui
 
 # 首次要选择的星级：1～6
@@ -61,6 +60,8 @@ IMAGE_LOST_CONFIRM_SECONDS = 0.15
 mouse_lock = threading.Lock()
 config_lock = threading.Lock()
 config_ready = threading.Event()
+task_control_lock = threading.Lock()
+current_task_stop_event: threading.Event | None = None
 panel_connected = threading.Event()
 panel_closed = threading.Event()
 panel_heartbeat_lock = threading.Lock()
@@ -79,13 +80,37 @@ class PanelClosed(Exception):
 
 
 class TaskStopped(Exception):
-    """用户通过空格键终止当前任务。"""
+    """用户通过控制面板终止当前任务。"""
 
 
 def get_config() -> dict:
     """读取网页提交的当前设置。"""
     with config_lock:
         return active_config.copy()
+
+
+def register_current_task(stop_event: threading.Event) -> None:
+    """登记当前任务的停止信号，供控制面板随时终止或重启。"""
+    global current_task_stop_event
+    with task_control_lock:
+        current_task_stop_event = stop_event
+
+
+def unregister_current_task(stop_event: threading.Event) -> None:
+    """仅清理属于当前任务自身的停止信号。"""
+    global current_task_stop_event
+    with task_control_lock:
+        if current_task_stop_event is stop_event:
+            current_task_stop_event = None
+
+
+def stop_current_task() -> bool:
+    """请求停止正在执行的任务；返回是否存在可停止的任务。"""
+    with task_control_lock:
+        if current_task_stop_event is None:
+            return False
+        current_task_stop_event.set()
+        return True
 
 
 def record_panel_heartbeat() -> None:
@@ -154,8 +179,14 @@ class ControlPanelHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/stop":
             panel_closed.set()
+            stop_current_task()
             config_ready.set()
             self.send_json(200, {"ok": True})
+            return
+        if self.path == "/api/stop-current":
+            stopped = stop_current_task()
+            message = "已请求终止当前任务。" if stopped else "当前没有正在执行的任务。"
+            self.send_json(200, {"ok": True, "message": message})
             return
         if self.path != "/api/config":
             self.send_json(404, {"error": "接口不存在"})
@@ -197,6 +228,8 @@ class ControlPanelHandler(BaseHTTPRequestHandler):
         with config_lock:
             active_config.update(config)
         record_panel_heartbeat()
+        # 新设置会替换当前任务；主循环会在旧任务退出后读取这组设置。
+        stop_current_task()
         config_ready.set()
         if mode == "auto_attack":
             print(
@@ -249,7 +282,7 @@ def wait_or_stop(
     image_pause_event: threading.Event,
     task_stop_event: threading.Event,
 ) -> None:
-    """等待；图片检测期间暂停计时，空格键终止当前任务。"""
+    """等待；图片检测期间暂停计时，控制面板可终止当前任务。"""
     remaining = seconds
     last_time = time.monotonic()
 
@@ -411,13 +444,7 @@ def run(config: dict) -> None:
     image_pause_event = threading.Event()
     battle_seen_event = threading.Event()
     task_stop_event = threading.Event()
-
-    def stop_current_task() -> None:
-        task_stop_event.set()
-        print("【空格键】已请求终止当前任务。")
-
-    # suppress=True 防止空格同时输入到被自动化的目标程序。
-    space_hotkey = keyboard.add_hotkey("space", stop_current_task, suppress=True)
+    register_current_task(task_stop_event)
     monitor_thread = threading.Thread(
         target=monitor_damage_ratio,
         args=(stop_event, image_pause_event, battle_seen_event),
@@ -433,7 +460,7 @@ def run(config: dict) -> None:
             config["taskbar_index"],
         )
         print("正在运行新版防误松开脚本。")
-        print("将在 3 秒后开始。按空格键可终止当前任务。")
+        print("将在 3 秒后开始。可通过控制面板终止当前任务。")
         wait_or_stop(3, image_pause_event, task_stop_event)
 
         pyautogui.hotkey("win", str(taskbar_index))
@@ -470,7 +497,7 @@ def run(config: dict) -> None:
         stop_event.set()
         image_pause_event.clear()
         task_stop_event.clear()
-        keyboard.remove_hotkey(space_hotkey)
+        unregister_current_task(task_stop_event)
         with mouse_lock:
             pyautogui.mouseUp(button="left")
         monitor_thread.join(timeout=0.5)
@@ -483,12 +510,7 @@ def run_auto_attack(config: dict) -> None:
 
     task_stop_event = threading.Event()
     is_holding = False
-
-    def stop_current_task() -> None:
-        task_stop_event.set()
-        print("【空格键】已请求终止当前任务。")
-
-    space_hotkey = keyboard.add_hotkey("space", stop_current_task, suppress=True)
+    register_current_task(task_stop_event)
 
     try:
         taskbar_index = config["taskbar_index"]
@@ -497,7 +519,7 @@ def run_auto_attack(config: dict) -> None:
         wait_or_stop(PROGRAM_OPEN_DELAY_SECONDS, threading.Event(), task_stop_event)
 
         next_f_press = time.monotonic() + 10
-        print("自动攻击已启动：按住鼠标左键，每 10 秒按一次 F。按空格键终止。")
+        print("自动攻击已启动：按住鼠标左键，每 10 秒按一次 F。可通过控制面板终止。")
         while True:
             if is_panel_closed():
                 raise PanelClosed
@@ -517,7 +539,7 @@ def run_auto_attack(config: dict) -> None:
             time.sleep(0.02)
     finally:
         task_stop_event.clear()
-        keyboard.remove_hotkey(space_hotkey)
+        unregister_current_task(task_stop_event)
         with mouse_lock:
             if is_holding:
                 pyautogui.mouseUp(button="left")
